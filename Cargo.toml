@@ -1,0 +1,22 @@
+[package]
+name = "jutsu_lang"
+version = "0.1.0"
+edition = "2021"
+description = "Secure and Open Source Local Inference Engine"
+
+[dependencies]
+logos = "0.14"
+libloading = "0.8"
+reqwest = { version = "0.11", features = ["blocking", "rustls-tls"], default-features = false }
+indicatif = "0.17"
+tokio = { version = "1.32", features = ["full"] }
+async-recursion = "1.0"
+serde_json = "1.0.149"
+
+[[bin]]
+name = "tgn"
+path = "src/main.rs"
+
+[features]
+default = []
+static_ffi = [] # Experimental flag to use llama.lib at compile time

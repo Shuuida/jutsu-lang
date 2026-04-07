@@ -1,0 +1,119 @@
+name: Tengen (Jutsu) CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v*' # Activated when creating release versions (v0.1.0)
+  # Executes when a Pull Request is sent
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-core:
+    name: Test & Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false # If Windows fails, let Linux keep running to find the error
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache (Speeds up compilation times)
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check Syntax (Cargo Check)
+        # Verify that the code compiles structurally without generating the binary
+        run: cargo check --verbose
+
+      - name: Run Rust Native Tests
+        run: cargo test --verbose
+
+      - name: Dry-Run Build
+        # Ensures that the executable can be built correctly on all 3 operating systems
+        run: cargo build --verbose
+
+  build-and-release:
+    name: Release for ${{ matrix.os }}
+    needs: test-core # This job will NEVER run if test-core fails
+    # It only runs if the event that triggered the workflow was the creation of a Tag (v*)
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: tgn-linux-amd64
+            bin_name: jutsu_lang
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: tgn-windows-amd64
+            bin_name: jutsu_lang.exe
+            archive: zip
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: tgn-macos-amd64
+            bin_name: jutsu_lang
+            archive: tar.gz
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build Release Binary
+        
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package Release (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          mkdir ${{ matrix.artifact_name }}
+          cp target/${{ matrix.target }}/release/${{ matrix.bin_name }} ${{ matrix.artifact_name }}/tgn
+          
+          echo "Downloading llama.cpp b8115 bookstores for ${{ matrix.os }}..."
+          
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            wget -q https://github.com/ggerganov/llama.cpp/releases/download/b8115/llama-b8115-bin-ubuntu-x64.zip -O llama_libs.zip
+            unzip -q llama_libs.zip -d llama_tmp
+            
+            find llama_tmp -name "*.so" -exec cp {} ${{ matrix.artifact_name }}/ \;
+            
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            wget -q https://github.com/ggerganov/llama.cpp/releases/download/b8115/llama-b8115-bin-macos-x64.zip -O llama_libs.zip
+            unzip -q llama_libs.zip -d llama_tmp
+            
+            find llama_tmp -name "*.dylib" -exec cp {} ${{ matrix.artifact_name }}/ \;
+          fi
+          
+          rm -rf llama_libs.zip llama_tmp
+          
+          tar -czvf ${{ matrix.artifact_name }}.${{ matrix.archive }} ${{ matrix.artifact_name }}
+
+      - name: Package Release (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          mkdir ${{ matrix.artifact_name }}
+          copy target\${{ matrix.target }}\release\${{ matrix.bin_name }} ${{ matrix.artifact_name }}\tgn.exe
+          Compress-Archive -Path ${{ matrix.artifact_name }} -DestinationPath ${{ matrix.artifact_name }}.${{ matrix.archive }}
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ${{ matrix.artifact_name }}.${{ matrix.archive }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

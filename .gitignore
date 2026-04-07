@@ -1,0 +1,6 @@
+/target
+*.dll
+*.gguf
+*.txt
+*.ju
+/aaa
