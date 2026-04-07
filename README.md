@@ -45,7 +45,7 @@ Jutsu is designed for both rapid deployments and deep engine development.
 **Dependencies:** Requires the [Rust and Cargo](https://rustup.rs/) compiler installed on your machine.
 ```bash
 # 1. Clone the repository
-git clone [https://github.com/Shuuida/jutsu_lang.git](https://github.com/Shuuida/jutsu_lang.git)
+git clone [https://github.com/Shuuida/jutsu-lang.git](https://github.com/Shuuida/jutsu-lang.git)
 cd jutsu_lang
 
 # 2. Compile the engine applying extreme mathematical optimizations (Release)
