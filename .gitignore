@@ -3,4 +3,5 @@
 *.gguf
 *.txt
 *.ju
+*.py
 /aaa

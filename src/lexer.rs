@@ -49,6 +49,8 @@ pub enum JutsuToken {
     #[token("||")] Or,
     #[token(".")] Dot,
     #[token("infer")] Infer,
+    #[token("mcp_server")] McpServer,
+    #[token("expose_tool")] ExposeTool,
     #[token("vessel", priority = 10)] Vessel,
     #[token("absorb", priority = 10)] Absorb,
     #[token("shield", priority = 10)] Shield,

@@ -3,11 +3,12 @@ use crate::ast::{Statement, Expression};
 /// use std::collections::HashMap;
 use std::time::Instant;
 use tokio::net::TcpListener;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::Mutex as AsyncMutex;
 use std::sync::Arc;
 use async_recursion::async_recursion;
 use std::path::Path;
+use crate::evaluator::{serde_to_jutsu, jutsu_to_serde};
 
 impl Evaluator {
     #[async_recursion]
@@ -52,6 +53,74 @@ impl Evaluator {
                     println!("[Server] Reply OK send.");
                 } else { panic!("[Network Error] 'reply' can only be used inside a veil."); }
                 ExecResult::Normal
+            }
+
+            Statement::ExposeToolStatement { name: _, description: _, function_name: _ } => {
+                // In the normal evaluator, we do nothing.
+                // The tools are extracted directly by the McpServerBlock.
+                ExecResult::Normal
+            }
+
+            Statement::McpServerBlock { port, body } => {
+                let port_val = self.evaluate_expression(&port).await;
+                let port_num = match port_val {
+                    JutsuValue::Number(n) => n as u16,
+                    _ => 8080, 
+                };
+
+                // We dynamically extract the tools from the block
+                let mut mcp_tools = Vec::new();
+                for stmt in &body {
+                    if let Statement::ExposeToolStatement { name, description, function_name } = stmt {
+                        mcp_tools.push((name.clone(), description.clone(), function_name.clone()));
+                    }
+                }
+
+                println!("[MCP Engine] Lifting native Model Context Protocol Server on 0.0.0.0:{}...", port_num);
+                println!("[MCP Engine] Registered Tools: {}", mcp_tools.len());
+                let listener = TcpListener::bind(format!("0.0.0.0:{}", port_num)).await.expect("Failed to bind MCP port.");
+                println!("[MCP Engine] MCP Server ACTIVE. Ready for JSON-RPC connections.");
+
+                // Asynchronous infinite loop to accept MCP clients
+                loop {
+                    match listener.accept().await {
+                        Ok((stream, _)) => {
+                            let mut thread_evaluator = self.clone();
+                            let thread_tools = mcp_tools.clone();
+                            
+                            // Spawn: A light thread from Tokyo for every MCP connection
+                            tokio::spawn(async move {
+                                let mut reader = BufReader::new(stream);
+                                let mut line = String::new();
+
+                                // We read packet by packet (JSON-Lines)
+                                loop {
+                                    line.clear();
+                                    match reader.read_line(&mut line).await {
+                                        Ok(0) => break, // The client closed the connection
+                                        Ok(_) => {
+                                            if line.trim().is_empty() { continue; }
+                                            
+                                            // We parse the JSON-RPC 2.0
+                                            if let Ok(json_req) = serde_json::from_str::<serde_json::Value>(&line) {
+                                                let response = thread_evaluator.handle_mcp_request(json_req, &thread_tools).await;
+                                                
+                                                // We respond to the MCP client
+                                                let mut res_str = serde_json::to_string(&response).unwrap();
+                                                res_str.push('\n'); // Vital line break for the protocol
+                                                let _ = reader.get_mut().write_all(res_str.as_bytes()).await;
+                                            } else {
+                                                println!("[MCP Error] Received invalid JSON payload.");
+                                            }
+                                        }
+                                        Err(_) => break,
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => { println!("[MCP Network Error] Failed Connection: {}", e); }
+                    }
+                }
             }
 
             Statement::VeilBlock { name: _, port, body } => {
@@ -257,6 +326,112 @@ impl Evaluator {
             Statement::ExpressionStatement(expr) => {
                 Box::pin(self.evaluate_expression(&expr)).await;
                 ExecResult::Normal
+            }
+        }
+    }
+    #[async_recursion]
+    pub async fn handle_mcp_request(&mut self, req: serde_json::Value, tools: &[(String, String, String)]) -> serde_json::Value {
+        let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
+        let req_id = req.get("id").unwrap_or(&serde_json::Value::Null);
+
+        match method {
+            "initialize" => {
+                // The initial handshake of the MCP protocol
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "protocolVersion": "2024-11-05",
+                        "capabilities": {
+                            "tools": {}
+                        },
+                        "serverInfo": {
+                            "name": "Tengen-MCP-Engine",
+                            "version": "0.2.0-alpha"
+                        }
+                    }
+                })
+            }
+            "tools/list" => {
+                // We present Jutsu's tools to the client
+                let json_tools: Vec<serde_json::Value> = tools.iter().map(|(name, desc, _)| {
+                    serde_json::json!({
+                        "name": name,
+                        "description": desc,
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "params": {
+                                    "type": "object",
+                                    "description": "Dynamic parameters mapped to Jutsu Dictionary"
+                                }
+                            }
+                        }
+                    })
+                }).collect();
+
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "tools": json_tools
+                    }
+                })
+            }
+            "tools/call" => {
+                let empty_json = serde_json::json!({});
+                // Native execution of the tool
+                let params = req.get("params").unwrap_or(&empty_json);
+                let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                let args_json = params.get("arguments").unwrap_or(&empty_json);
+
+                // We are looking for the Jutsu function mapped to this tool
+                if let Some((_, _, func_name)) = tools.iter().find(|t| t.0 == name) {
+                    if let Some((params_names, body)) = self.functions.get(func_name).cloned() {
+                        
+                        // Convert the JSON arguments to a native Jutsu Dictionary
+                        let jutsu_args = serde_to_jutsu(args_json.clone());
+                        let mut func_env = std::collections::HashMap::new();
+                        
+                        // Inject the JSON as the FIRST parameter of the function in Jutsu
+                        if let Some(first_param) = params_names.first() {
+                            func_env.insert(first_param.clone(), jutsu_args);
+                        }
+
+                        // Execute the Jutsu function in isolated memory
+                        self.env_stack.push(func_env);
+                        let mut return_value = JutsuValue::Null;
+                        for s in body { 
+                            if let ExecResult::Return(val) = self.execute_statement(&s).await { 
+                                return_value = val; 
+                                break; 
+                            } 
+                        }
+                        self.env_stack.pop();
+
+                        // We respond using the strict MCP format
+                        serde_json::json!({
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "result": {
+                                "content": [
+                                    {
+                                        "type": "text",
+                                        "text": jutsu_to_serde(&return_value).to_string()
+                                    }
+                                ]
+                            }
+                        })
+                    } else {
+                        serde_json::json!({ "jsonrpc": "2.0", "id": req_id, "error": { "code": -32601, "message": "Jutsu function not found" } })
+                    }
+                } else {
+                    serde_json::json!({ "jsonrpc": "2.0", "id": req_id, "error": { "code": -32601, "message": "Tool not exposed" } })
+                }
+            }
+            _ => {
+                // Unsupported notifications or methods
+                serde_json::json!({ "jsonrpc": "2.0", "id": req_id, "error": { "code": -32601, "message": "Method not found" } })
             }
         }
     }
