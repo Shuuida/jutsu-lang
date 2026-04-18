@@ -27,7 +27,8 @@ pub enum JutsuToken {
     #[token("[")] BracketOpen,
     #[token("]")] BracketClose,
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")] Identifier,
-    #[regex(r#""([^"\\]|\\.)*""#)] StringLiteral,
+    #[regex(r#""(?:[^"\\]|\\.)*""#)] 
+    #[regex(r#""""([^"]|"[^"]|""[^"])*""""#)] StringLiteral,
     #[regex(r"[0-9]+(\.[0-9]+)?")] Number,
     
     // MATHEMATICAL & LOGICAL OPERATORS

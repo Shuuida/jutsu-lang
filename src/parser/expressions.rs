@@ -57,8 +57,14 @@ impl<'a> Parser<'a> {
                 self.advance(); Some(Expression::NumberLiteral(n))
             }
             Some(JutsuToken::StringLiteral) => {
-                let raw_str = self.lexer.slice().trim_matches('"');
-                let s = raw_str.replace("\\n", "\n").replace("\\t", "\t").replace("\\\"", "\"");
+                let raw_str = self.lexer.slice();
+                let s;
+                if raw_str.starts_with("\"\"\"") {
+                    s = raw_str[3..raw_str.len() - 3].to_string();
+                } else {
+                    let trimmed = &raw_str[1..raw_str.len() - 1];
+                    s = trimmed.replace("\\n", "\n").replace("\\t", "\t").replace("\\\"", "\"");
+                }
                 self.advance(); 
                 Some(Expression::StringLiteral(s))
             }
