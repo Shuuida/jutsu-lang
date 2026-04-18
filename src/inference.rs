@@ -2,10 +2,11 @@ use libloading::{Library, Symbol};
 use std::ffi::CString;
 use std::os::raw::{c_char, c_void};
 use std::io::{self, Write};
+use crate::grammar::{LlamaSamplerInitGrammarFn, LlamaSamplerApplyFn, LlamaSamplerAcceptFn, LlamaSamplerFreeFn};
 
-type LlamaModel = *mut c_void;
-type LlamaContext = *mut c_void;
-type LlamaToken = i32;
+pub type LlamaModel = *mut c_void;
+pub type LlamaContext = *mut c_void;
+pub type LlamaToken = i32;
 
 #[repr(C, align(8))]
 pub struct LlamaModelParams { _padding: [u8; 256], }
@@ -40,6 +41,7 @@ pub struct LlamaTokenData {
 pub struct LlamaTokenDataArray {
     pub data: *mut LlamaTokenData,
     pub size: usize,
+    pub selected: i64,
     pub sorted: bool,
 }
 
@@ -67,9 +69,8 @@ pub fn load_native_model(file_path: &str) -> usize {
 
             let params = get_params_fn();
             let ptr = load_model_fn(c_file_path.as_ptr(), params);
-            std::mem::forget(lib_llama); // Keep lib loaded for pointers to stay valid in background
+            std::mem::forget(lib_llama); 
             
-            // Verify that the C++ engine actually returned memory
             if ptr.is_null() {
                 panic!("[Hardware Error] The native AI engine failed to allocate memory for the model. VRAM may be full or the file may be corrupted.");
             }
@@ -154,26 +155,53 @@ pub fn run_inference(model_ptr: usize, quantize: bool, temp: f32, bind: f32, raw
                                 *batch.logits.add(i) = if i == tokens.len() - 1 { 1 } else { 0 }; 
                             }
 
-                            print!("JUTSU AI Output: ");
+                            print!("JUTSU AI Output: \n");
                             io::stdout().flush().unwrap();
 
-                            // Immutability of the original boundary
                             let prompt_tokens = batch.n_tokens; 
                             let mut n_cur = prompt_tokens;
-                            let n_max_generation = 250; // Increased response capacity
+                            let n_max_generation = 250; 
                             let mut full_response = String::new();
 
-                            let sample_grammar_fn = lib_llama.get::<unsafe extern "C" fn(LlamaContext, *mut LlamaTokenDataArray, *mut c_void)>(b"llama_sample_grammar").ok();
-                            let grammar_accept_fn = lib_llama.get::<unsafe extern "C" fn(LlamaContext, *mut c_void, LlamaToken)>(b"llama_grammar_accept_token").ok();
+                            let init_grammar_sampler = lib_llama.get::<LlamaSamplerInitGrammarFn>(b"llama_sampler_init_grammar").ok();
+                            let apply_sampler = lib_llama.get::<LlamaSamplerApplyFn>(b"llama_sampler_apply").ok();
+                            let accept_sampler = lib_llama.get::<LlamaSamplerAcceptFn>(b"llama_sampler_accept").ok();
+                            let free_sampler = lib_llama.get::<LlamaSamplerFreeFn>(b"llama_sampler_free").ok();
                             
-                            let grammar_ptr: *mut c_void = std::ptr::null_mut();
-                            if let Some(ref _g_text) = grammar_var {
-                                println!("[System] GBNF directive received. (Requires C++ rule initializer to activate the master pointer.)");
-                                // Note: The llama.cpp C API requires an array of 'llama_grammar_element'. 
-                                // If your DLL has a 'llama_grammar_init_from_string' wrapper, it is invoked here.
+                            let mut sampler_ptr: *mut c_void = std::ptr::null_mut();
+                            let mut _keepalive_grammar = None;
+                            let mut _keepalive_root = None;
+
+                            // =================================================================
+                            // GBNF SAMPLER INITIALIZATION
+                            // =================================================================
+                            if let Some(ref g_text) = grammar_var {
+                                if let Some(init_fn) = init_grammar_sampler {
+                                    let c_grammar_str = std::ffi::CString::new(g_text.clone()).unwrap();
+                                    let c_root_rule = std::ffi::CString::new("root").unwrap();
+                                    
+                                    println!("[Hardware] Injecting grammar into the Modern Sampler API...");
+                                    
+                                    // We use target_vocab_ptr instead of ptr
+                                    sampler_ptr = init_fn(target_vocab_ptr, c_grammar_str.as_ptr(), c_root_rule.as_ptr());
+                                    
+                                    // Keep the variables alive so that C++ doesn't read garbage.
+                                    _keepalive_grammar = Some(c_grammar_str);
+                                    _keepalive_root = Some(c_root_rule);
+                                    
+                                    if sampler_ptr.is_null() {
+                                        println!("[Hardware Error] The Sampler rejected the EBNF syntax.");
+                                    } else {
+                                        println!("[Hardware] Mathematical Sieve ACTIVATED.");
+                                    }
+                                } else {
+                                    println!("[Hardware Error] Critical failure: DLL incompatible with the Samplers API.");
+                                }
                             }
 
-                            // Use static prompt_tokens, not the dynamic batch
+                            // =================================================================
+                            // THE HARDWARE CAGE (SAMPLING LOOP)
+                            // =================================================================
                             while n_cur <= prompt_tokens + n_max_generation {
                                 if decode(ctx_ptr, batch) != 0 { break; }
 
@@ -181,9 +209,9 @@ pub fn run_inference(model_ptr: usize, quantize: bool, temp: f32, bind: f32, raw
                                 let logits_ptr = get_logits(ctx_ptr, batch.n_tokens - 1);
                                 let logits_slice = std::slice::from_raw_parts_mut(logits_ptr, vocab_size as usize);
 
-                                if !grammar_ptr.is_null() {
-                                    if let Some(ref sample_fn) = sample_grammar_fn {
-                                        // Package the native logits to the strict format of llama.cpp
+                                // APPLY THE MATHEMATICAL SIEVE TO THE SAMPLER
+                                if !sampler_ptr.is_null() {
+                                    if let Some(ref apply_fn) = apply_sampler {
                                         let mut candidates_data: Vec<LlamaTokenData> = (0..vocab_size).map(|i| LlamaTokenData {
                                             id: i as i32,
                                             logit: logits_slice[i as usize],
@@ -193,19 +221,21 @@ pub fn run_inference(model_ptr: usize, quantize: bool, temp: f32, bind: f32, raw
                                         let mut candidates = LlamaTokenDataArray {
                                             data: candidates_data.as_mut_ptr(),
                                             size: candidates_data.len(),
+                                            selected: -1, // Initialize at -1 for safety
                                             sorted: false,
                                         };
 
-                                        // Run the strainer (Assign f32::NEG_INFINITY to everything that breaks the JSON syntax)
-                                        sample_fn(ctx_ptr, &mut candidates, grammar_ptr);
+                                        // We crushed the odds
+                                        apply_fn(sampler_ptr, &mut candidates);
 
-                                        // Dump the purified memory back to the slice for the RNG algorithm
+                                        // We return the purified logits to the original slice
                                         for i in 0..vocab_size as usize {
                                             logits_slice[i] = candidates_data[i].logit;
                                         }
                                     }
                                 }
                                 
+                                // PENALTY ADJUSTMENT (Bind)
                                 if bind > 1.0 {
                                     for &tok in &history_tokens {
                                         let tok_idx = tok as usize;
@@ -217,6 +247,7 @@ pub fn run_inference(model_ptr: usize, quantize: bool, temp: f32, bind: f32, raw
                                     }
                                 }
 
+                                // TOKEN SAMPLING
                                 let mut next_token: LlamaToken = 0;
                                 if temp <= 0.0 {
                                     let mut max_val = f32::NEG_INFINITY;
@@ -250,13 +281,14 @@ pub fn run_inference(model_ptr: usize, quantize: bool, temp: f32, bind: f32, raw
                                 if next_token == eos_token || next_token == 151645 { break; } 
                                 history_tokens.push(next_token);
 
-                                if !grammar_ptr.is_null() {
-                                    if let Some(ref accept_fn) = grammar_accept_fn {
-                                        accept_fn(ctx_ptr, grammar_ptr, next_token);
+                                // STATE MACHINE ADVANCE (NEW API)
+                                if !sampler_ptr.is_null() {
+                                    if let Some(ref accept_fn) = accept_sampler {
+                                        accept_fn(sampler_ptr, next_token);
                                     }
                                 }
 
-                                // 128 bytes buffer to support heavy nested tokens
+                                // TEXT DECODING
                                 let mut piece_buf = vec![0u8; 128];
                                 let chars_written = token_to_piece(target_vocab_ptr, next_token, piece_buf.as_mut_ptr() as *mut c_char, 128, 0, true);
                                 
@@ -275,6 +307,17 @@ pub fn run_inference(model_ptr: usize, quantize: bool, temp: f32, bind: f32, raw
                                 n_cur += 1;
                             }
                             println!();
+
+                            // =================================================================
+                            // MEMORY CLEANSE (Vital)
+                            // =================================================================
+                            if !sampler_ptr.is_null() {
+                                if let Some(free_fn) = free_sampler {
+                                    free_fn(sampler_ptr);
+                                    println!("[Hardware] Modern Sampler memory successfully released.");
+                                }
+                            }
+
                             batch_free(batch); free_ctx(ctx_ptr); 
                             return Some(full_response);
                         }
