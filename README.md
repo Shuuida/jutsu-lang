@@ -154,6 +154,51 @@ Jutsu is designed to handle thousands of interactions natively.
   * **`input(prompt)`**: Halts the thread and waits for dynamic keyboard input from a human user.
   * **`veil(name) (port) { ... }` and `reply(val)`**: Boots up a native TCP server in Jutsu. Allows external web platforms to send requests to local Agents.
 
+### 6. The Mathematical Sieve (Hardware-Level GBNF)
+
+Jutsu implements a strict, hardware-level grammar compiler that intercepts the token generation process directly in the VRAM (via the modern Sampler API). By passing an EBNF (Extended Backus-Naur Form) grammar to the `.infer()` method, you force the AI to produce exact, mathematically guaranteed structures (like 100% valid JSON), preventing hallucinated formats.
+
+Jutsu supports **Multiline Strings** using triple quotes (`"""`), allowing for clean and readable grammar definitions with full native support for regex-like quantifiers (`*`, `+`, `?`) natively handled by the C++ engine.
+
+```jutsu
+// Clean definition of a strict JSON grammar
+let grammar = """
+root ::= "{" ws "\"status\"" ws ":" ws result "}"
+ws ::= [ \t\n]*
+result ::= ["] "OK" ["] | ["] "ERROR" ["]
+"""
+
+shield(Master = "100%") {
+    // The model is mathematically forced to only output {"status": "OK"} or {"status": "ERROR"}
+    let response = Master.infer("Evaluate this system...", ctx, grammar)
+    return response
+}
+```
+
+### 7. Native MCP Server (Model Context Protocol)
+
+Jutsu can operate as a high-performance backend via the Model Context Protocol (MCP). You can expose Jutsu functions (Tools) to external clients (like Python scripts, Claude Desktop, etc) using asynchronous JSON-RPC communication over TCP. This turns Jutsu into an invisible, highly efficient cognitive processing node.
+
+```jutsu
+def analyze_ticket(params) {
+    let user_text = params["text_ticket"]
+    
+    // ... execute shielded inference with GBNF ...
+    
+    // Returns the structured JSON directly to the external client
+    return json_result 
+}
+
+// Boots a native asynchronous TCP server exposing the tool
+mcp_server(port = 8080) {
+    expose_tool(
+        name = "extract_ticket_data", 
+        desc = "Uses local AI to classify and structure support messages.", 
+        function = analyze_ticket
+    )
+}
+```
+
 -----
 
 ## 🔀 Orchestration Flow: The "Router" Pattern
@@ -233,9 +278,11 @@ let _anchor = input(">>> Press ENTER to shut down the Enclave node servers... <<
 
 ## 🗺️ Roadmap and Future Architecture
 
-The engine is stable in its experimental phase, but evolution continues. The next major infrastructure milestone will be:
+The engine is stable in its experimental phase (v0.2.0-alpha), but evolution continues. With the Mathematical Sieve (GBNF) and the MCP Server fully operational, the next major infrastructure milestone will be:
 
-  * **The Mathematical Strainer (Hardware-Level Grammar Compiler):** Currently, forcing the AI to respond in JSON involves passing the EBNF string to the model, which consumes valuable cycles. The next patch will integrate an **embedded Rust Parser** that will read the EBNF string in Jutsu, dynamically compile it into *contiguous C memory arrays* (`#[repr(C)] llama_grammar_element`), and pass them directly to the base `llama_grammar_init` function. This will create a "hard filter" at the VRAM level, forcing the AI to produce JSON or strict syntax at a higher speed.
+* **GEP (Genome Evolution Protocol):** Leveraging the absolute stability of the hardware-level GBNF compiler, Jutsu will introduce native syntax for evolutionary agents. Instead of attempting to destructively mutate neural weights (Tensors), GEP will mutate the agent's "Soul Configuration" (The Genome: System Prompts, Temperatures, Bind Penalties, and RAG contexts). 
+  
+  Background Tokio threads will spawn swarms of mutant agents and evaluate their responses. Because the GBNF ensures every mutant agent still outputs strict, parsable JSON regardless of how chaotic its parameters become, Tengen Engine will be able to run automated Fitness Loops, calculate scores, and crossbreed the best configurations dynamically. This will turn Jutsu into a self-optimizing, neuro-evolutionary swarm orchestrator natively running on local hardware.
 
 -----
 
