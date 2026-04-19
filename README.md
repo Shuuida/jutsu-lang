@@ -1,11 +1,11 @@
 # Tengen Engine | Jutsu Programming Language
 
-![Version](https://img.shields.io/badge/version-v0.1.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-v0.2.0--alpha-orange)
 ![License](https://img.shields.io/badge/license-MIT%20%2F%20OpenSource-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![Backend](https://img.shields.io/badge/backend-Rust%20%2B%20llama.cpp-red)
 
-> ⚠️ **PROJECT STATUS: v0.1.0-alpha**
+> ⚠️ **PROJECT STATUS: v0.2.0-alpha**
 > Jutsu is an experimental language in an early alpha phase. The inference engine (Tengen Engine) is strictly tied to the local hardware architecture. Dynamic typing, parser syntax, and standard primitives are subject to change without prior notice (Breaking Changes) in future versions.
 
 Jutsu is a domain-specific programming language designed for **Inference-Oriented Programming (IOP)**. It does not compile traditional software; it orchestrates asynchronous swarms of Artificial Intelligence Agents natively, concurrently, and safely at the local hardware level.
