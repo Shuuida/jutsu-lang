@@ -27,7 +27,8 @@ pub enum JutsuToken {
     #[token("[")] BracketOpen,
     #[token("]")] BracketClose,
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")] Identifier,
-    #[regex(r#""([^"\\]|\\.)*""#)] StringLiteral,
+    #[regex(r#""(?:[^"\\]|\\.)*""#)] 
+    #[regex(r#""""([^"]|"[^"]|""[^"])*""""#)] StringLiteral,
     #[regex(r"[0-9]+(\.[0-9]+)?")] Number,
     
     // MATHEMATICAL & LOGICAL OPERATORS
@@ -49,6 +50,8 @@ pub enum JutsuToken {
     #[token("||")] Or,
     #[token(".")] Dot,
     #[token("infer")] Infer,
+    #[token("mcp_server")] McpServer,
+    #[token("expose_tool")] ExposeTool,
     #[token("vessel", priority = 10)] Vessel,
     #[token("absorb", priority = 10)] Absorb,
     #[token("shield", priority = 10)] Shield,

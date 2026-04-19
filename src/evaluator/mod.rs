@@ -123,6 +123,26 @@ pub fn serde_to_jutsu(val: serde_json::Value) -> JutsuValue {
     }
 }
 
+pub fn jutsu_to_serde(val: &JutsuValue) -> serde_json::Value {
+    match val {
+        JutsuValue::Null => serde_json::Value::Null,
+        JutsuValue::Boolean(b) => serde_json::Value::Bool(*b),
+        JutsuValue::Number(n) => serde_json::json!(*n as f64),
+        JutsuValue::Text(s) => serde_json::Value::String(s.clone()),
+        JutsuValue::Array(arr) => {
+            let vec: Vec<serde_json::Value> = arr.iter().map(jutsu_to_serde).collect();
+            serde_json::Value::Array(vec)
+        },
+        JutsuValue::Dictionary(dict) => {
+            let mut map = serde_json::Map::new();
+            for (k, v) in dict { map.insert(k.clone(), jutsu_to_serde(v)); }
+            serde_json::Value::Object(map)
+        },
+        // If it's a Tensor or a Shared, we force it to Text so it can travel across the network
+        _ => serde_json::Value::String(val.to_string()),
+    }
+}
+
 #[derive(Clone)]
 pub struct Evaluator {
     pub env_stack: Vec<HashMap<String, JutsuValue>>, 
