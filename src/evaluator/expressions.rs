@@ -436,6 +436,43 @@ impl Evaluator {
                     }
                 } else { panic!("[Type Error] http_get expects a string URL."); }
             }
+
+            Expression::CallToolCall { vessel_name, tool_name, params } => {
+                let evaluated_params = Box::pin(self.evaluate_expression(params.as_ref())).await;
+                
+                let url = self.mcp_clients.get(&vessel_name).cloned().expect(&format!("[Network Error] Remote Vessel '{}' not found", vessel_name));
+                
+                let payload = serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {
+                        "name": tool_name,
+                        "arguments": crate::evaluator::jutsu_to_serde(&evaluated_params)
+                    }
+                });
+
+                println!("[MCP Client] Calling remote tool '{}' on '{}'...", tool_name, vessel_name);
+
+                let client = reqwest::Client::new();
+                match client.post(&url).json(&payload).send().await {
+                    Ok(res) => {
+                        if let Ok(json_res) = res.json::<serde_json::Value>().await {
+                            if let Some(content_array) = json_res.get("result").and_then(|r| r.get("content")).and_then(|c| c.as_array()) {
+                                if let Some(first_item) = content_array.first() {
+                                    if let Some(text) = first_item.get("text").and_then(|t| t.as_str()) {
+                                        return JutsuValue::Text(text.to_string());
+                                    }
+                                }
+                            }
+                            return crate::evaluator::serde_to_jutsu(json_res);
+                        } else {
+                            panic!("[MCP Client Error] Failed to parse JSON response from '{}'", vessel_name);
+                        }
+                    }
+                    Err(e) => panic!("[MCP Client Error] Connection failed: {}", e),
+                }
+            }
         }
     }
 

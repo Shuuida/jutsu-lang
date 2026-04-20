@@ -152,6 +152,7 @@ pub struct Evaluator {
     pub global_queue: Arc<AsyncMutex<VecDeque<JutsuValue>>>,
     pub hardware_lock: Arc<AsyncMutex<()>>,
     pub is_shielded: bool,
+    pub mcp_clients: std::collections::HashMap<String, String>,
 }
 
 impl Evaluator {
@@ -164,6 +165,7 @@ impl Evaluator {
             global_queue: Arc::new(AsyncMutex::new(VecDeque::new())),
             hardware_lock: Arc::new(AsyncMutex::new(())),
             is_shielded: false,
+            mcp_clients: HashMap::new(),
         } 
     }
 

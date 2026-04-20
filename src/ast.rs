@@ -21,6 +21,7 @@ pub enum Expression {
     Share { value: Box<Expression> },
     SysExecCall(Box<Expression>),
     HttpGetCall(Box<Expression>),
+    CallToolCall { vessel_name: String, tool_name: String, params: Box<Expression> },
 }
 
 #[derive(Debug, Clone)]
@@ -42,6 +43,7 @@ pub enum Statement {
     ShieldBlock { max_vram: String, body: Vec<Statement> },
     McpServerBlock { port: Expression, body: Vec<Statement> },
     ExposeToolStatement { name: String, description: String, function_name: String },
+    McpClientDeclaration { name: String, url: String },
     VeilBlock { name: String, port: Expression, body: Vec<Statement> },
     WorkerBlock { body: Vec<Statement> },
     /// Swarm Quantization directive: Moves/Compresses tensors between RAM and VRAM

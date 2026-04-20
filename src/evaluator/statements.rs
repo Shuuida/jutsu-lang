@@ -123,6 +123,12 @@ impl Evaluator {
                 }
             }
 
+            Statement::McpClientDeclaration { name, url } => {
+                println!("[Network] Remote Vessel '{}' registered mapping to MCP Server: {}", name, url);
+                self.mcp_clients.insert(name, url);
+                ExecResult::Normal
+            }
+
             Statement::VeilBlock { name: _, port, body } => {
                 let port_val = self.evaluate_expression(&port).await;
                 let port_num = match port_val {

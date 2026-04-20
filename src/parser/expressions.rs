@@ -258,10 +258,12 @@ impl<'a> Parser<'a> {
                 self.advance(); 
                 
                 if let Some(JutsuToken::Dot) = self.current_token {
-                    self.advance(); 
+                    self.advance(); // We consume the period '.'
+                    
                     if let Some(JutsuToken::Infer) = self.current_token {
                         self.advance(); 
                         if let Some(JutsuToken::ParenOpen) = self.current_token { self.advance(); } else { return None; }
+                        
                         let prompt_var = if let Some(JutsuToken::Identifier) = self.current_token {
                             let v = self.lexer.slice().to_string(); self.advance(); v
                         } else { return None; };
@@ -288,6 +290,30 @@ impl<'a> Parser<'a> {
                         if let Some(JutsuToken::ParenClose) = self.current_token { self.advance(); } else { return None; }
                         
                         Some(Expression::InferCall { model_name: id, prompt_var, context_var, grammar_var })
+                    
+                    } else if let Some(JutsuToken::CallTool) = self.current_token {
+                        self.advance(); // We also consume 'call'
+                        
+                        if let Some(JutsuToken::ParenOpen) = self.current_token { self.advance(); } else { return None; }
+                        
+                        // We extract the first argument: The name of the tool (It must be a String)
+                        let tool_name = if let Some(JutsuToken::StringLiteral) = self.current_token {
+                            let s = self.lexer.slice().trim_matches('"').to_string(); 
+                            self.advance(); 
+                            s
+                        } else { 
+                            panic!("[Syntax Error] Expected string literal for tool name in 'call'"); 
+                        };
+
+                        if let Some(JutsuToken::Comma) = self.current_token { self.advance(); } else { panic!("[Syntax Error] Expected ',' after tool name"); }
+                        
+                        // The second argument is extracted: The dictionary/parameter object
+                        // And we use self.parse_expression() which will recursively read the entire dictionary
+                        let params = self.parse_expression().expect("[Syntax Error] Expected parameters (dictionary or expression) after tool name");
+                        
+                        if let Some(JutsuToken::ParenClose) = self.current_token { self.advance(); } else { panic!("[Syntax Error] Missing ')' in 'call'"); }
+
+                        Some(Expression::CallToolCall { vessel_name: id, tool_name, params: Box::new(params) })
                     } else {
                         Some(Expression::Variable(id))
                     }

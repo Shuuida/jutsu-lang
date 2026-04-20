@@ -175,29 +175,58 @@ shield(Master = "100%") {
 }
 ```
 
-### 7. Native MCP Server (Model Context Protocol)
+### 7. Native MCP Integration (Model Context Protocol)
 
-Jutsu can operate as a high-performance backend via the Model Context Protocol (MCP). You can expose Jutsu functions (Tools) to external clients (like Python scripts, Claude Desktop, etc) using asynchronous JSON-RPC communication over TCP. This turns Jutsu into an invisible, highly efficient cognitive processing node.
+Jutsu natively implements the industry-standard **Model Context Protocol (MCP)** using asynchronous JSON-RPC 2.0. This allows Tengen Engine to act as both a highly efficient cognitive backend (Server) and a universal orchestrator that consumes external APIs (Client).
+
+#### MCP Server (Exposing Jutsu to the World)
+You can expose Jutsu functions (Tools) to external clients (like Python scripts, Claude Desktop, etc.) over TCP. This turns Jutsu into an invisible, hardware-accelerated processing node.
 
 ```jutsu
 def analyze_ticket(params) {
     let user_text = params["text_ticket"]
-    
     // ... execute shielded inference with GBNF ...
-    
-    // Returns the structured JSON directly to the external client
-    return json_result 
+    return json_result // Returns structured JSON directly to the external client
 }
 
 // Boots a native asynchronous TCP server exposing the tool
 mcp_server(port = 8080) {
-    expose_tool(
+    expose(
         name = "extract_ticket_data", 
         desc = "Uses local AI to classify and structure support messages.", 
         function = analyze_ticket
     )
 }
 ```
+
+#### MCP Client (Connecting Jutsu to the World)
+Jutsu is not an isolated engine. By using the `connect` and `call` primitives, Tengen Engine can reach out to external MCP Servers (like vector databases, or web scrapers) to fetch real-time data and inject it directly into local GPU inference.
+
+A remote MCP Server is treated simply as another `vessel` in your code:
+
+```jutsu
+// 1. Load the Local Brain (GPU/RAM Inference)
+vessel LocalBrain = absorb("Qwen2.5-Coder-1.5B-Instruct.gguf", temp=0.2)
+
+// 2. Connect to an external MCP Server (The Remote Vessel)
+vessel WebSearcher = connect("http://localhost:5050/mcp")
+
+def research_and_summarize(params) {
+    let topic = params["topic"]
+    
+    // Jutsu acts as a Client: Sends JSON-RPC to the external server
+    let raw_data = WebSearcher.call("search_web", { "query": topic })
+    
+    // Jutsu acts as the Engine: Processes the external data locally
+    let prompt = "Summarize the following external data: " + raw_data
+    let summary = ""
+    
+    shield(LocalBrain = "100%") {
+        summary = LocalBrain.infer(prompt, "", "")
+    }
+    
+    return summary
+}
 
 -----
 

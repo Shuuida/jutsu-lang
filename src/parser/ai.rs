@@ -107,6 +107,19 @@ impl<'a> Parser<'a> {
 
                 Some(Statement::HyperQuadDirective { name, model_ident, target, compression })
             },
+
+            Some(JutsuToken::ConnectMcp) => {
+                self.advance(); 
+                if let Some(JutsuToken::ParenOpen) = self.current_token { self.advance(); } else { return None; }
+                
+                let url = if let Some(JutsuToken::StringLiteral) = self.current_token {
+                    let s = self.lexer.slice().trim_matches('"').to_string(); self.advance(); s
+                } else { return None; };
+
+                if let Some(JutsuToken::ParenClose) = self.current_token { self.advance(); } else { return None; }
+
+                Some(Statement::McpClientDeclaration { name, url })
+            },
             
             _ => None
         }

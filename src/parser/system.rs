@@ -64,7 +64,7 @@ impl<'a> Parser<'a> {
     }
 
     pub(super) fn parse_expose_tool_statement(&mut self) -> Option<Statement> {
-        self.advance(); // Consume 'expose_tool'
+        self.advance(); // Consume 'expose'
         if let Some(JutsuToken::ParenOpen) = self.current_token { self.advance(); } else { return None; }
         
         // We extract: name = "read_log"
