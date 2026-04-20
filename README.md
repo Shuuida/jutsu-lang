@@ -1,11 +1,11 @@
 # Tengen Engine | Jutsu Programming Language
 
-![Version](https://img.shields.io/badge/version-v0.2.0--alpha-orange)
+![Version](https://img.shields.io/badge/version-v0.2.1--alpha-orange)
 ![License](https://img.shields.io/badge/license-MIT%20%2F%20OpenSource-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)
 ![Backend](https://img.shields.io/badge/backend-Rust%20%2B%20llama.cpp-red)
 
-> ⚠️ **PROJECT STATUS: v0.2.0-alpha**
+> ⚠️ **PROJECT STATUS: v0.2.1-alpha**
 > Jutsu is an experimental language in an early alpha phase. The inference engine (Tengen Engine) is strictly tied to the local hardware architecture. Dynamic typing, parser syntax, and standard primitives are subject to change without prior notice (Breaking Changes) in future versions.
 
 Jutsu is a domain-specific programming language designed for **Inference-Oriented Programming (IOP)**. It does not compile traditional software; it orchestrates asynchronous swarms of Artificial Intelligence Agents natively, concurrently, and safely at the local hardware level.
@@ -70,7 +70,7 @@ To enable native syntax highlighting (Burgundy/Orange Theme):
 
 Jutsu is **hardware-agnostic**. It uses a dynamic library loading system. By default, Tengen Engine will process inference on your CPU. If you have dedicated hardware (GPU), Jutsu will absorb it automatically and transparently.
 
-**⚠️ Strict Requirement:** Jutsu v0.1.0 was compiled and linked to the C++ engine **llama.cpp build b8115**. You must use the exact binaries from that version to avoid memory structure conflicts (ABI/Segmentation Faults).
+**⚠️ Strict Requirement:** Jutsu was compiled and linked to the C++ engine **llama.cpp build b8115**. You must use the exact binaries from that version to avoid memory structure conflicts (ABI/Segmentation Faults).
 
 **Instructions for NVIDIA GPUs (CUDA):**
 
@@ -307,7 +307,7 @@ let _anchor = input(">>> Press ENTER to shut down the Enclave node servers... <<
 
 ## 🗺️ Roadmap and Future Architecture
 
-The engine is stable in its experimental phase (v0.2.0-alpha), but evolution continues. With the Mathematical Sieve (GBNF) and the MCP Server fully operational, the next major infrastructure milestone will be:
+The engine is stable in its experimental phase (v0.2.1-alpha), but evolution continues. With the Mathematical Sieve (GBNF) and the MCP Server fully operational, the next major infrastructure milestone will be:
 
 * **GEP (Genome Evolution Protocol):** Leveraging the absolute stability of the hardware-level GBNF compiler, Jutsu will introduce native syntax for evolutionary agents. Instead of attempting to destructively mutate neural weights (Tensors), GEP will mutate the agent's "Soul Configuration" (The Genome: System Prompts, Temperatures, Bind Penalties, and RAG contexts). 
   
